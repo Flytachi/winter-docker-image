@@ -89,13 +89,18 @@ check() {
         rm -rf "$work/.winter" "$work/logs"
         docker run -d --name "$name" -p "$PORT:8000" -v "$work":/app "$tag" >/dev/null
 
+        # A project with SERVER_TLS_* in its .env speaks only HTTPS: once a plain request
+        # gets no answer, HTTPS is asked as well (self-signed is fine here).
         code=000
+        scheme=http
         for _ in $(seq 1 60); do
-            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/" || true)"
-            [ "$code" != "000" ] && break
+            for scheme in http https; do
+                code="$(curl -sk -o /dev/null -w '%{http_code}' "$scheme://127.0.0.1:$PORT/" || true)"
+                [ "$code" != "000" ] && break 2
+            done
             sleep 0.5
         done
-        if [ "$code" = "000" ]; then fail "HTTP did not answer on :$PORT"; else pass "HTTP answers on :$PORT ($code)"; fi
+        if [ "$code" = "000" ]; then fail "HTTP(S) did not answer on :$PORT"; else pass "$scheme answers on :$PORT ($code)"; fi
         if docker exec "$name" sh -c 'tr "\0" " " < /proc/1/cmdline' | grep -q "application start"; then
             pass "PID 1 is the application"
         else

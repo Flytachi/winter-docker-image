@@ -6,7 +6,8 @@ name: publish
 # Tags of a line { "php": "8.5", "swoole": "6.2.3" }, built on 2026-10-29:
 #   8.5-swoole6.2           moves within the Swoole 6.2 line
 #   8.5-swoole6.2-20261029  never moves: pin this in production
-#   8.5                     only on the line with "latest": true
+#   8.5                     only with "major": true — one line per PHP version
+#   latest                  only with "latest": true — one line in the file
 #
 # Runs on a push to main, every Monday (so the base image's security fixes reach the
 # published one), and by hand: Actions → publish → Run workflow.
@@ -25,6 +26,19 @@ jobs:
       builds: ${{ steps.read.outputs.builds }}
     steps:
       - uses: actions/checkout@v4
+      # Two lines claiming one tag would both push it, and the last build to finish
+      # would win. build.sh refuses the same file.
+      - name: Check versions.json
+        run: |
+          dup="$(jq -r '[.[] | select(.major)] | group_by(.php)[] | select(length > 1) | .[0].php' versions.json)"
+          if [ -n "$dup" ]; then
+            echo "::error::versions.json: more than one \"major\": true for PHP $dup"
+            exit 1
+          fi
+          if [ "$(jq '[.[] | select(.latest)] | length' versions.json)" -gt 1 ]; then
+            echo "::error::versions.json: more than one \"latest\": true"
+            exit 1
+          fi
       - id: read
         run: echo "builds=$(jq -c . versions.json)" >> "$GITHUB_OUTPUT"
 
@@ -39,6 +53,7 @@ jobs:
     env:
       PHP_VERSION: ${{ matrix.php }}
       SWOOLE_VERSION: ${{ matrix.swoole }}
+      MAJOR: ${{ matrix.major && 'yes' || 'no' }}
       LATEST: ${{ matrix.latest && 'yes' || 'no' }}
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +71,8 @@ jobs:
             echo "list<<EOF"
             echo "$IMAGE:$PHP_VERSION-swoole$MINOR"
             echo "$IMAGE:$PHP_VERSION-swoole$MINOR-$(date -u +%Y%m%d)"
-            [ "$LATEST" = yes ] && echo "$IMAGE:$PHP_VERSION"
+            [ "$MAJOR" = yes ] && echo "$IMAGE:$PHP_VERSION"
+            [ "$LATEST" = yes ] && echo "$IMAGE:latest"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 

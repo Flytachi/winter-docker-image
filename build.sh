@@ -11,7 +11,7 @@ cd "$(dirname "$0")"
 
 IMAGE=flytachi/winter
 
-# versions.json, one build per line → "php swoole latest(yes|no)"
+# versions.json, one build per line → "php swoole major(yes|no) latest(yes|no)"
 versions() {
     awk -F'"' '/"php"/ {
         php = ""; swoole = ""
@@ -19,26 +19,40 @@ versions() {
             if ($i == "php") php = $(i + 2)
             if ($i == "swoole") swoole = $(i + 2)
         }
-        print php, swoole, ($0 ~ /"latest"[ ]*:[ ]*true/ ? "yes" : "no")
+        print php, swoole, ($0 ~ /"major"[ ]*:[ ]*true/ ? "yes" : "no"), ($0 ~ /"latest"[ ]*:[ ]*true/ ? "yes" : "no")
     }' versions.json
+}
+
+# Two lines claiming one tag would both push it, and whichever build finished last would
+# win: `major` once per PHP version, `latest` once in the file. The workflow checks the same.
+check_versions() {
+    dup="$(versions | awk '$3 == "yes" { n[$1]++ } END { for (p in n) if (n[p] > 1) print p }')"
+    if [ -n "$dup" ]; then
+        echo "versions.json: more than one \"major\": true for PHP $dup — one line per PHP version" >&2
+        exit 1
+    fi
+    if [ "$(versions | awk '$4 == "yes"' | wc -l)" -gt 1 ]; then
+        echo "versions.json: more than one \"latest\": true — one line in the file" >&2
+        exit 1
+    fi
 }
 
 # Sizes in MB as `docker image ls` prints them (10^6 bytes), so the numbers agree.
 mb() { awk -v b="$1" 'BEGIN { printf (b < 10000000 ? "%.1f MB" : "%.0f MB"), b / 1000000 }'; }
 
 build() {
-    php="$1"; swoole="$2"; latest="$3"
+    php="$1"; swoole="$2"; major="$3"; latest="$4"
     minor="$(echo "$swoole" | cut -d. -f1,2)"
     base="phpswoole/swoole:$swoole-php$php-alpine"
     tag="$IMAGE:$php-swoole$minor"
 
+    set -- -t "$tag"
+    [ "$major" = yes ] && set -- "$@" -t "$IMAGE:$php"
+    [ "$latest" = yes ] && set -- "$@" -t "$IMAGE:latest"
+
     echo "== building $tag  (from $base)"
     start=$(date +%s)
-    if [ "$latest" = yes ]; then
-        docker build --build-arg PHP_VERSION="$php" --build-arg SWOOLE_VERSION="$swoole" -t "$tag" -t "$IMAGE:$php" .
-    else
-        docker build --build-arg PHP_VERSION="$php" --build-arg SWOOLE_VERSION="$swoole" -t "$tag" .
-    fi
+    docker build --build-arg PHP_VERSION="$php" --build-arg SWOOLE_VERSION="$swoole" "$@" .
     took=$(( $(date +%s) - start ))
 
     real_php="$(docker run --rm "$tag" php -r 'echo PHP_VERSION;')"
@@ -61,17 +75,20 @@ build() {
     [ "$base_disk" -gt 0 ] && echo "  ours    $(mb $((disk - base_disk)))    on top of $base ($(mb "$base_disk"))"
     echo "  built   ${took}s"
     echo "  tags    $tag"
-    [ "$latest" = yes ] && echo "          $IMAGE:$php    (latest for PHP $php)"
+    [ "$major" = yes ] && echo "          $IMAGE:$php    (major: the build for PHP $php)"
+    [ "$latest" = yes ] && echo "          $IMAGE:latest    (latest: the image's default)"
     echo "          + $tag-$(date -u +%Y%m%d) when published"
     echo
 }
 
+check_versions
+
 if [ "$#" -eq 2 ]; then
-    latest="$(versions | awk -v p="$1" -v s="$2" '$1 == p && $2 == s { print $3 }')"
-    build "$1" "$2" "${latest:-no}"
+    flags="$(versions | awk -v p="$1" -v s="$2" '$1 == p && $2 == s { print $3, $4 }')"
+    build "$1" "$2" ${flags:-no no}
 elif [ "$#" -eq 0 ]; then
-    versions | while read -r php swoole latest; do
-        build "$php" "$swoole" "$latest"
+    versions | while read -r php swoole major latest; do
+        build "$php" "$swoole" "$major" "$latest"
     done
 else
     echo "usage: ./build.sh              every build in versions.json" >&2

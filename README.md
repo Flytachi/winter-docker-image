@@ -18,7 +18,8 @@ The entrypoint runs `call application start` — it needs a winter-kernel that h
 
 | Tag | Moves? |
 | --- | --- |
-| `8.5` | the build marked latest for PHP 8.5 |
+| `latest` | the build marked `latest` — the main build of the newest PHP |
+| `8.5` | the build marked `major` for PHP 8.5 — one per PHP version |
 | `8.5-swoole6.2` | the newest build of that PHP and Swoole line |
 | `8.5-swoole6.2-20261029` | never — pin this in production |
 
