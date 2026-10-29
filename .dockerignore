@@ -1,0 +1,9 @@
+.git
+.gitignore
+.idea
+.github
+README.md
+HOWTO.md
+versions.json
+build.sh
+test.sh
