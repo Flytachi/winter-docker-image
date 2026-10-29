@@ -9,6 +9,7 @@ starts the application as PID 1.
 | PHP + Swoole (`phpswoole/swoole:<swoole>-php<version>-alpine`, exact Swoole release) | your code |
 | `pcntl`, `bcmath`, `pdo_pgsql` + `pgsql`, `pdo_mysql`, `redis`, opcache | `vendor/` with winter-kernel |
 | user `winter` (uid 1000) — everything runs as it, `procps` | `.env` |
+| `bash` with tab completion for `./call` | |
 | opcache settings for production, `memory_limit = 256M` | |
 
 The entrypoint runs `call application start` — it needs a winter-kernel that has it.
@@ -74,6 +75,11 @@ opened into the container: `docker exec`, Portainer, `kubectl exec`. A process s
 a console is then one the application can stop and whose records it can read. Root, when
 really needed: `docker exec -u root …`. The uid is a number so Kubernetes' `runAsNonRoot`
 accepts it.
+
+A console with completion: `docker exec -it <container> bash` (in Portainer, `/bin/bash`),
+then `./call <Tab>`. The completion asks the project's own `call complete`, so it offers
+what the project's winter-kernel has; `call cfg completion -i` is for a developer's machine
+and is not needed here.
 
 The application is PID 1: `docker stop` sends it SIGTERM, and it stops every component
 cleanly before it exits. A failed `di build` stops the start with one

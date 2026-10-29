@@ -74,6 +74,12 @@ check() {
     if docker run --rm -e WINTER_OPCACHE=0 "$tag" php -r 'exit(ini_get("opcache.enable_cli") ? 1 : 0);'; then pass "opcache off with WINTER_OPCACHE=0"; else fail "WINTER_OPCACHE=0 left opcache on"; fi
     if docker run --rm "$tag" php -r 'exit(ini_get("memory_limit") === "256M" ? 0 : 1);'; then pass "memory_limit 256M"; else fail "memory_limit is not 256M"; fi
     if docker run --rm "$tag" 2>&1 | grep -q "no /app/call"; then pass "without a project it says so"; else fail "entrypoint did not explain the missing project"; fi
+    if docker run --rm "$tag" bash -c 'exit 0' 2>/dev/null; then pass "bash"; else fail "bash missing"; fi
+    if docker run --rm "$tag" bash -ic 'complete -p call' 2>/dev/null | grep -q _php_winter_call; then
+        pass "bash completes ./call"
+    else
+        fail "no completion for call in an interactive bash (/etc/bash/winter.sh)"
+    fi
 
     if [ -n "$APP" ]; then
         echo "-- application ($APP)"
@@ -98,6 +104,14 @@ check() {
         pid1_user="$(docker exec "$name" ps -o user= -p 1 | tr -d ' ')"
         if [ "$pid1_user" = "winter" ]; then pass "the application runs as winter"; else fail "the application runs as $pid1_user"; fi
         if [ "$(docker exec "$name" id -un)" = "winter" ]; then pass "a console opened into it is winter"; else fail "docker exec is not winter"; fi
+        # What <TAB> after `./call ap` would offer in a console opened into the container.
+        # shellcheck disable=SC2016
+        offered="$(docker exec "$name" bash -ic 'cd /app; COMP_LINE="./call ap"; COMP_POINT=${#COMP_LINE}
+            COMP_WORDS=(./call ap); COMP_CWORD=1; _php_winter_call; echo "${COMPREPLY[*]}"' 2>/dev/null)"
+        case " $offered " in
+            *" app "*) pass "./call <TAB> suggests the project's commands" ;;
+            *) fail "./call ap<TAB> offered: '$offered'" ;;
+        esac
         if docker exec "$name" sh -c 'touch /app/.winter-write-test && rm /app/.winter-write-test'; then
             pass "winter can write in /app"
         else

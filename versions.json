@@ -1,3 +1,4 @@
 [
-  { "php": "8.5", "swoole": "6.2.3", "latest": true }
+  { "php": "8.5", "swoole": "6.2.3", "latest": true },
+  { "php": "8.4", "swoole": "6.2.3" }
 ]

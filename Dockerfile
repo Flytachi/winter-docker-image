@@ -28,7 +28,7 @@ WORKDIR /app
 # container — `docker exec`, Portainer, `kubectl exec`. A process started from a root
 # console belonged to root: the application could not stop it, nor read the records it
 # wrote. A fixed uid, because Kubernetes' runAsNonRoot checks a number, not a name.
-RUN apk add --no-cache procps \
+RUN apk add --no-cache procps bash \
     && rm -rf /var/cache/apk/* \
     && addgroup -g 1000 winter \
     && adduser -D -H -s /sbin/nologin -u 1000 -G winter winter \
@@ -56,6 +56,10 @@ ENV WINTER_OPCACHE=1
 # Memory ceiling per worker, active in both modes. PHP's 128M default is invisible
 # until a worker dies of it; the box must hold worker_num × this value.
 COPY php/php-memory.ini /usr/local/etc/php/conf.d/20-memory.ini
+
+# bash for the consoles opened into the container, with tab completion for `./call`:
+# `docker exec -it <container> bash`, or /bin/bash in Portainer.
+COPY shell/winter.sh /etc/bash/winter.sh
 
 COPY entrypoint.sh /usr/local/bin/winter-entrypoint
 RUN chmod +x /usr/local/bin/winter-entrypoint

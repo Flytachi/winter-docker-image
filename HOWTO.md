@@ -5,6 +5,7 @@ versions.json   ← ЧТО собирать. Единственное, что т
 Dockerfile      ← КАК собирать. Трогаешь, только если меняешь сам образ
 build.sh        ← собрать у себя
 test.sh         ← проверить у себя
+shell/winter.sh ← автодополнение ./call в bash — копия completion_bash из winter-kernel
 ```
 
 Всё запускается из папки репозитория:
@@ -118,8 +119,8 @@ SMOKE_PORT=19000 ./test.sh --app ../winter-demo   # если порт 18080 за
 | Блок | Что |
 | --- | --- |
 | extensions | `swoole`, `pcntl`, `posix`, `bcmath`, `pdo_pgsql`, `pgsql`, `pdo_mysql`, `redis`, opcache |
-| runtime | версии PHP и Swoole совпадают с `versions.json`, Swoole — релиз, всё работает от `winter` (uid 1000), opcache включён и выключается `WINTER_OPCACHE=0`, `memory_limit 256M` |
-| application (`--app`) | проект стартует, HTTP отвечает, PID 1 — приложение и работает от `winter`, консоль в контейнере тоже `winter`, `winter` может писать в `/app`, `docker stop` завершает с кодом 0 |
+| runtime | версии PHP и Swoole совпадают с `versions.json`, Swoole — релиз, всё работает от `winter` (uid 1000), opcache включён и выключается `WINTER_OPCACHE=0`, `memory_limit 256M`, есть `bash` и автодополнение `./call` |
+| application (`--app`) | проект стартует, HTTP отвечает, PID 1 — приложение и работает от `winter`, консоль в контейнере тоже `winter`, `./call ap<Tab>` подсказывает команды проекта, `winter` может писать в `/app`, `docker stop` завершает с кодом 0 |
 
 В конце `OK`, или `FAILED: <образы>` с кодом выхода 1 — тогда рядом с проверкой `✗` и
 лог контейнера. Проект копируется во временную папку: оригинал не меняется. Ему нужен
@@ -146,5 +147,6 @@ SMOKE_PORT=19000 ./test.sh --app ../winter-demo   # если порт 18080 за
 | `test.sh`: `✗ redis missing` и т.п. | скрипт в `extensions/` не отработал — смотри вывод `build.sh` |
 | `test.sh`: `✗ HTTP did not answer` | лог контейнера в конце; часто нет `vendor/` в проекте или занят порт (`SMOKE_PORT`) |
 | `test.sh`: `✗ docker stop: exit 137` | приложение не уложилось в 30 секунд и было убито |
-| заглянуть внутрь | `docker run --rm -it flytachi/winter:8.5 sh` |
+| заглянуть внутрь | `docker run --rm -it flytachi/winter:8.5 bash` |
+| `test.sh`: `✗ no completion for call` | нет `/etc/bash/winter.sh` в образе — смотри `COPY shell/` в `Dockerfile` |
 | удалить локальный образ | `docker rmi flytachi/winter:8.5-swoole6.2` |
