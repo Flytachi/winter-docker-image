@@ -20,37 +20,75 @@ cd ~/Documents/Workspace/winter-docker-image
 
 ```json
 [
-  { "php": "8.5", "swoole": "6.2.3", "major": true, "latest": true },
+  { "php": "8.5", "swoole": "6.2.6", "major": true, "latest": true },
+  { "php": "8.5", "swoole": "6.2.3" },
   { "php": "8.4", "swoole": "6.2.3", "major": true }
 ]
 ```
 
-Одна строка — один образ. **Каждую сборку пиши на отдельной строке** (скрипты читают
+**Добавить версию = дописать строку и сделать `git push` в `main`.** Всё. Одна строка —
+один образ. **Каждую сборку пиши на отдельной строке** (скрипты читают
 файл построчно).
 
 | Поле | Что значит |
 | --- | --- |
 | `php` | версия PHP: `8.5`, `8.4` |
-| `swoole` | точная версия Swoole: `6.2.3`. Не `6.2` и не RC — только релиз |
+| `swoole` | точная версия Swoole: `6.2.3`. Не `6.2`. RC Swoole (`6.3.0-RC1`) — только в строке с `"rc": true` |
 | `major` | `true` — основная сборка своей версии PHP: она ещё и под коротким тегом `8.5`. **Одна строка на версию PHP**: у 8.5 и у 8.4 — по своей |
 | `latest` | `true` — эта сборка ещё и под тегом `latest` (`docker pull flytachi/winter` без тега). **Одна строка на весь файл** — обычно основная сборка самой новой PHP |
+| `rc` | `true` — тестовая сборка: публикуется только под `-rc` тегами, стабильные не трогает. **Одна на версию PHP**, без `major` и `latest` |
 
-Две строки с `major` для одной версии PHP или два `latest` — `build.sh` и CI откажут
-до сборки: иначе обе публиковали бы один тег, и победила бы та, что собралась позже.
+`build.sh` и CI откажут до сборки, если две строки претендуют на один тег: одна и та же
+версия дважды, два `major` для одной PHP, два `latest`, два `rc` для одной PHP, `rc`
+вместе с `major`/`latest`. Проверить файл без сборки: `./build.sh --check`.
 
-Теги, которые получит строка `{ "php": "8.5", "swoole": "6.2.3" }`:
+Какие теги получит каждая строка файла выше (посмотреть самому:
+`./build.sh --tags 8.5 6.2.6`):
+
+| Строка | Теги |
+| --- | --- |
+| 8.5 / 6.2.6 `major` `latest` | `8.5-swoole6.2.6`, `8.5-swoole6.2`, `8.5-swoole6.2-20261123`, `8.5`, `latest` |
+| 8.5 / 6.2.3 | `8.5-swoole6.2.3` |
+| 8.4 / 6.2.3 `major` | `8.4-swoole6.2.3`, `8.4-swoole6.2`, `8.4-swoole6.2-20261123`, `8.4` |
+
+- `8.5-swoole6.2.6` — точная версия: есть у **каждой** строки.
+- `8.5-swoole6.2` — самая новая 6.2.x из файла для PHP 8.5. Его же датированная копия
+  (`…-20261123`) не меняется никогда — на неё закрепляются в продакшене.
+- `8.5` / `latest` — только с `major` / `latest`.
+
+Строка `{ "php": "8.5", "swoole": "6.2.6", "rc": true }` получает только:
 
 | Тег | Что это |
 | --- | --- |
-| `flytachi/winter:8.5-swoole6.2` | последняя сборка этой строки |
-| `flytachi/winter:8.5-swoole6.2-20261029` | неизменный: на него закрепляются в продакшене |
-| `flytachi/winter:8.5` | только если `"major": true` |
-| `flytachi/winter:latest` | только если `"latest": true` |
+| `flytachi/winter:8.5-swoole6.2.6-rc` | эта тестовая сборка |
+| `flytachi/winter:8.5-rc` | rc для PHP 8.5 — что сейчас пробуется |
+
+Ни `8.5`, ни `latest`, ни `8.5-swoole6.2`, ни датированного тега.
 
 Версии Swoole, какие бывают: https://hub.docker.com/r/phpswoole/swoole/tags — нужен
 тег вида `6.4.0-php8.5-alpine`.
 
 ---
+
+## Тестовая сборка (rc)
+
+Новую версию можно выкатить сначала как rc — на Docker Hub, но мимо стабильных тегов:
+
+1. Строка с `"rc": true` (стабильная остаётся как есть):
+   ```json
+   [
+     { "php": "8.5", "swoole": "6.2.3", "major": true, "latest": true },
+     { "php": "8.5", "swoole": "6.2.6", "rc": true }
+   ]
+   ```
+2. PR в `main` — CI соберёт и проверит все строки, ничего не публикуя. Смёрджил —
+   опубликует, rc под `8.5-swoole6.2.6-rc` и `8.5-rc`.
+3. Пробуешь в проекте: `FROM flytachi/winter:8.5-rc`.
+4. Всё хорошо — выпустить: убрать `"rc": true` (и, если она теперь основная, перенести
+   на неё `major`/`latest`). Старую строку можно оставить — у неё останется свой тег
+   `8.5-swoole6.2.3`.
+
+Опубликованные `-rc` теги остаются на Docker Hub, пока их не удалить там руками.
 
 ## Добавить Swoole 6.4
 
@@ -62,11 +100,12 @@ cd ~/Documents/Workspace/winter-docker-image
 2. Всё зелёное — дописать строку в `versions.json`:
    ```json
    [
-     { "php": "8.5", "swoole": "6.2.3", "major": true, "latest": true },
+     { "php": "8.5", "swoole": "6.2.6", "major": true, "latest": true },
      { "php": "8.5", "swoole": "6.4.0" }
    ]
    ```
-3. `git push` в `main` — CI соберёт и опубликует обе.
+3. `git push` в `main` — CI соберёт и опубликует обе. Хочешь сначала потестить на
+   Docker Hub, не трогая стабильные теги, — добавь строке `"rc": true` (см. выше).
 
 **Сделать 6.4 основной** — перенести `"major": true` (и `"latest": true`, если он там) на её строку.
 **Убрать старую** — удалить её строку (уже опубликованные теги на Docker Hub останутся).
@@ -77,10 +116,11 @@ cd ~/Documents/Workspace/winter-docker-image
 строка `{ "php": "8.6", "swoole": "6.2.3", "major": true }` — без `major` тега `8.6` не
 будет. Стала самой новой — перенести на неё `"latest": true`.
 
-## Обновить Swoole в существующей строке (6.2.3 → 6.2.4)
+## Обновить Swoole (6.2.3 → 6.2.6)
 
-`./build.sh 8.5 6.2.4`, `./test.sh 8.5 6.2.4 --app ../winter-demo`, затем поменять
-`"swoole"` в строке.
+`./build.sh 8.5 6.2.6`, `./test.sh 8.5 6.2.6 --app ../winter-demo`, затем либо поменять
+`"swoole"` в строке, либо дописать новую строку рядом со старой — тогда опубликуются обе,
+а `8.5-swoole6.2` перейдёт на 6.2.6.
 
 ---
 
@@ -94,7 +134,7 @@ cd ~/Documents/Workspace/winter-docker-image
 Ничего не публикует. Для каждой сборки выведет:
 
 ```
-== building flytachi/winter:8.5-swoole6.2  (from phpswoole/swoole:6.2.3-php8.5-alpine)
+== building flytachi/winter:8.5-swoole6.2.3  (from phpswoole/swoole:6.2.3-php8.5-alpine)
 
   PHP     8.5.12
   Swoole  6.2.3
@@ -102,9 +142,10 @@ cd ~/Documents/Workspace/winter-docker-image
   pull    54.2 MB    downloaded by docker pull (compressed)
   ours    3.8 MB    on top of phpswoole/swoole:6.2.3-php8.5-alpine (200 MB)
   built   6s
-  tags    flytachi/winter:8.5-swoole6.2
-          flytachi/winter:8.5    (major: the build for PHP 8.5)
-          flytachi/winter:latest    (latest: the image's default)
+  tags    flytachi/winter:8.5-swoole6.2.3
+          flytachi/winter:8.5-swoole6.2
+          flytachi/winter:8.5
+          flytachi/winter:latest
           + flytachi/winter:8.5-swoole6.2-20261029 when published
 ```
 
@@ -143,6 +184,9 @@ SMOKE_PORT=19000 ./test.sh --app ../winter-demo   # если порт 18080 за
 **Когда:** каждый `push` в `main`, каждый понедельник (пересборка с обновлениями
 безопасности базового образа) и вручную — GitHub → Actions → publish → Run workflow.
 
+**PR в `main`:** тот же workflow собирает и прогоняет `test.sh` на каждой строке, но
+ничего не публикует — видно, зелёное ли, до мерджа.
+
 **Что делает:** для каждой строки `versions.json` собирает образ, прогоняет `test.sh`
 (упал — эта строка не публикуется), публикует `amd64` + `arm64` с тегами из таблицы выше.
 
@@ -150,6 +194,7 @@ SMOKE_PORT=19000 ./test.sh --app ../winter-demo   # если порт 18080 за
 
 | Симптом | Что смотреть |
 | --- | --- |
+| `versions.json: …` до сборки | две строки делят тег — см. таблицу полей; `./build.sh --check` |
 | `build.sh`: `not found` на `FROM` | такой версии `phpswoole/swoole` нет — проверь теги на Docker Hub |
 | `test.sh`: `not built` | сначала `./build.sh` с теми же версиями |
 | `test.sh`: `✗ redis missing` и т.п. | скрипт в `extensions/` не отработал — смотри вывод `build.sh` |
@@ -157,4 +202,4 @@ SMOKE_PORT=19000 ./test.sh --app ../winter-demo   # если порт 18080 за
 | `test.sh`: `✗ docker stop: exit 137` | приложение не уложилось в 30 секунд и было убито |
 | заглянуть внутрь | `docker run --rm -it flytachi/winter:8.5 bash` |
 | `test.sh`: `✗ no completion for call` | нет `/etc/bash/winter.sh` в образе — смотри `COPY shell/` в `Dockerfile` |
-| удалить локальный образ | `docker rmi flytachi/winter:8.5-swoole6.2` |
+| удалить локальный образ | `docker rmi flytachi/winter:8.5-swoole6.2.3` |

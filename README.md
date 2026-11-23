@@ -20,8 +20,10 @@ The entrypoint runs `call application start` — it needs a winter-kernel that h
 | --- | --- |
 | `latest` | the build marked `latest` — the main build of the newest PHP |
 | `8.5` | the build marked `major` for PHP 8.5 — one per PHP version |
-| `8.5-swoole6.2` | the newest build of that PHP and Swoole line |
+| `8.5-swoole6.2` | the newest 6.2.x built for PHP 8.5 |
+| `8.5-swoole6.2.3` | that exact build, as long as it is listed |
 | `8.5-swoole6.2-20261029` | never — pin this in production |
+| `8.5-rc`, `8.5-swoole6.2.6-rc` | a build being tried before it is released — not for production |
 
 The builds are listed in `versions.json`. Rebuilt every Monday, so the base image's
 security fixes reach them.

@@ -3,17 +3,23 @@ name: publish
 # Builds every line of versions.json, checks it with ./test.sh, and pushes it to Docker
 # Hub for linux/amd64 and linux/arm64.
 #
-# Tags of a line { "php": "8.5", "swoole": "6.2.3" }, built on 2026-10-29:
-#   8.5-swoole6.2           moves within the Swoole 6.2 line
-#   8.5-swoole6.2-20261029  never moves: pin this in production
+# Tags of { "php": "8.5", "swoole": "6.2.6" }, built on 2026-10-29 (build.sh decides them):
+#   8.5-swoole6.2.6         every line: its exact versions
+#   8.5-swoole6.2           the newest 6.2.x listed for PHP 8.5 — moves when a newer one is
+#   8.5-swoole6.2-20261029  ...its dated copy, never moves: pin this in production
 #   8.5                     only with "major": true — one line per PHP version
 #   latest                  only with "latest": true — one line in the file
 #
+# A line with "rc": true is a build being tried: only 8.5-swoole6.2.6-rc and 8.5-rc.
+#
 # Runs on a push to main, every Monday (so the base image's security fixes reach the
 # published one), and by hand: Actions → publish → Run workflow.
+# A pull request into main builds and checks every line the same way, and publishes nothing.
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   schedule:
     - cron: '0 4 * * 1'
@@ -27,18 +33,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Two lines claiming one tag would both push it, and the last build to finish
-      # would win. build.sh refuses the same file.
+      # would win. The rules live in build.sh — the same check runs locally.
       - name: Check versions.json
         run: |
-          dup="$(jq -r '[.[] | select(.major)] | group_by(.php)[] | select(length > 1) | .[0].php' versions.json)"
-          if [ -n "$dup" ]; then
-            echo "::error::versions.json: more than one \"major\": true for PHP $dup"
+          # build.sh reads the file line by line, the matrix below reads it as JSON:
+          # one build per line keeps them agreeing.
+          if [ "$(jq length versions.json)" -ne "$(grep -c '"php"' versions.json)" ]; then
+            echo "::error::versions.json: write each build on a line of its own"
             exit 1
           fi
-          if [ "$(jq '[.[] | select(.latest)] | length' versions.json)" -gt 1 ]; then
-            echo "::error::versions.json: more than one \"latest\": true"
-            exit 1
-          fi
+          sh build.sh --check
       - id: read
         run: echo "builds=$(jq -c . versions.json)" >> "$GITHUB_OUTPUT"
 
@@ -49,30 +53,30 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.builds) }}
-    name: php ${{ matrix.php }} · swoole ${{ matrix.swoole }}
+    name: php ${{ matrix.php }} · swoole ${{ matrix.swoole }}${{ matrix.rc && ' · rc' || '' }}
     env:
       PHP_VERSION: ${{ matrix.php }}
       SWOOLE_VERSION: ${{ matrix.swoole }}
       MAJOR: ${{ matrix.major && 'yes' || 'no' }}
       LATEST: ${{ matrix.latest && 'yes' || 'no' }}
+      RC: ${{ matrix.rc && 'yes' || 'no' }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
+      # build.sh decides the tags — the same ones it gives a local build. The first is
+      # the one ./test.sh looks for.
       - name: Tags
         id: tags
         run: |
-          MINOR="$(echo "$SWOOLE_VERSION" | cut -d. -f1,2)"
-          IMAGE=flytachi/winter
+          list="$(sh build.sh --tags "$PHP_VERSION" "$SWOOLE_VERSION")"
+          echo "$list"
           {
-            echo "check=$IMAGE:$PHP_VERSION-swoole$MINOR"
+            echo "check=$(echo "$list" | head -1)"
             echo "list<<EOF"
-            echo "$IMAGE:$PHP_VERSION-swoole$MINOR"
-            echo "$IMAGE:$PHP_VERSION-swoole$MINOR-$(date -u +%Y%m%d)"
-            [ "$MAJOR" = yes ] && echo "$IMAGE:$PHP_VERSION"
-            [ "$LATEST" = yes ] && echo "$IMAGE:latest"
+            echo "$list"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -89,12 +93,16 @@ jobs:
       - name: Check
         run: sh test.sh "$PHP_VERSION" "$SWOOLE_VERSION"
 
+      # A pull request stops here: built and checked, nothing pushed. (A pull request
+      # from a fork has no secrets anyway.)
       - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Publish
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .

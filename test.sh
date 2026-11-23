@@ -33,15 +33,23 @@ versions() {
             if ($i == "php") php = $(i + 2)
             if ($i == "swoole") swoole = $(i + 2)
         }
-        print php, swoole
+        print php, swoole, ($0 ~ /"rc"[ ]*:[ ]*true/ ? "yes" : "no")
     }' versions.json
 }
+
+# The same as in build.sh: a Swoole release is 6.2.3; anything else can only be an rc.
+is_release() { echo "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; }
+
+# Swoole spells a pre-release its own way (6.3.0RC1 for the tag 6.3.0-RC1): compared
+# without separators and case.
+same_version() { [ "$(echo "$1" | tr -d '.-' | tr 'A-Z' 'a-z')" = "$(echo "$2" | tr -d '.-' | tr 'A-Z' 'a-z')" ]; }
 
 FAILED_IMAGES=""
 
 check() {
-    php="$1"; swoole="$2"
-    tag="$IMAGE:$php-swoole$(echo "$swoole" | cut -d. -f1,2)"
+    php="$1"; swoole="$2"; rc="$3"
+    # The tag build.sh gives every build: 8.5-swoole6.2.3, or 8.5-swoole6.2.6-rc for an rc.
+    if [ "$rc" = yes ]; then tag="$IMAGE:$php-swoole$swoole-rc"; else tag="$IMAGE:$php-swoole$swoole"; fi
     failed=0
     pass() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
     fail() { printf '  \033[31m✗\033[0m %s\n' "$1"; failed=1; }
@@ -63,9 +71,16 @@ check() {
     real_php="$(docker run --rm "$tag" php -r 'echo PHP_VERSION;')"
     real_swoole="$(docker run --rm "$tag" php -r 'echo SWOOLE_VERSION;')"
     case "$real_php" in "$php".*) pass "PHP $real_php" ;; *) fail "PHP $real_php, expected $php" ;; esac
-    if [ "$real_swoole" = "$swoole" ]; then pass "Swoole $real_swoole"; else fail "Swoole $real_swoole, expected $swoole"; fi
-    # A release candidate is not published: the floating base tags pick them up.
-    if echo "$real_swoole" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then pass "Swoole is a release"; else fail "Swoole $real_swoole is not a release"; fi
+    if same_version "$real_swoole" "$swoole"; then pass "Swoole $real_swoole"; else fail "Swoole $real_swoole, expected $swoole"; fi
+    # A Swoole pre-release is published only as an rc, under -rc tags: the floating base
+    # tags would otherwise slip one into a stable tag.
+    if [ "$rc" = yes ]; then
+        pass "rc build — published only under -rc tags"
+    elif is_release "$real_swoole"; then
+        pass "Swoole is a release"
+    else
+        fail "Swoole $real_swoole is not a release — only an \"rc\": true line may use it"
+    fi
     # Everything runs as winter — consoles opened into the container too: a process a
     # root console started could be neither stopped by the application nor read by it.
     who="$(docker run --rm "$tag" id -un):$(docker run --rm "$tag" id -u)"
@@ -139,10 +154,17 @@ check() {
 }
 
 if [ "$#" -eq 2 ]; then
-    check "$1" "$2"
+    rc="$(versions | awk -v p="$1" -v s="$2" '$1 == p && $2 == s { print $3 }')"
+    # Not listed: decided as build.sh decides it.
+    if [ -z "$rc" ]; then
+        if is_release "$2"; then rc=no; else rc=yes; fi
+    fi
+    check "$1" "$2" "$rc"
 elif [ "$#" -eq 0 ]; then
+    # A for loop, not `| while`: FAILED_IMAGES must survive it.
     for line in $(versions | tr ' ' ':'); do
-        check "${line%%:*}" "${line#*:}"
+        php="${line%%:*}"; rest="${line#*:}"
+        check "$php" "${rest%%:*}" "${rest#*:}"
     done
 else
     echo "usage: ./test.sh [<php> <swoole>] [--app <project-dir>]" >&2
