@@ -45,11 +45,12 @@ is_release() { echo "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; }
 #   8.5-swoole6.2            the newest stable 6.2.x of PHP 8.5 — moves to 6.2.7 when listed
 #   8.5-swoole6.2-<date>     ...and its dated copy: never moves
 #   8.5 / latest             "major" / "latest"
-#   8.5-swoole6.2.6-rc, 8.5-rc   an rc: nothing else
+#   8.5-swoole6.2.6-rc, 8.5-rc   an rc: nothing else (8.5-swoole6.3.0-rc2 for a Swoole RC)
 tags() {
     php="$1"; swoole="$2"; minor="$(echo "$2" | cut -d. -f1,2)"
     if [ "$5" = yes ]; then
-        echo "$IMAGE:$php-swoole$swoole-rc"
+        # 6.2.6 → 8.5-swoole6.2.6-rc; 6.3.0-rc2 already says so → 8.5-swoole6.3.0-rc2
+        if is_release "$swoole"; then echo "$IMAGE:$php-swoole$swoole-rc"; else echo "$IMAGE:$php-swoole$swoole"; fi
         echo "$IMAGE:$php-rc"
         return
     fi

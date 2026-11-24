@@ -48,8 +48,9 @@ FAILED_IMAGES=""
 
 check() {
     php="$1"; swoole="$2"; rc="$3"
-    # The tag build.sh gives every build: 8.5-swoole6.2.3, or 8.5-swoole6.2.6-rc for an rc.
-    if [ "$rc" = yes ]; then tag="$IMAGE:$php-swoole$swoole-rc"; else tag="$IMAGE:$php-swoole$swoole"; fi
+    # The tag build.sh gives every build: 8.5-swoole6.2.3; an rc of a release 8.5-swoole6.2.6-rc
+    # (a Swoole RC, 6.3.0-rc2, says so itself: 8.5-swoole6.3.0-rc2).
+    if [ "$rc" = yes ] && is_release "$swoole"; then tag="$IMAGE:$php-swoole$swoole-rc"; else tag="$IMAGE:$php-swoole$swoole"; fi
     failed=0
     pass() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
     fail() { printf '  \033[31m✗\033[0m %s\n' "$1"; failed=1; }

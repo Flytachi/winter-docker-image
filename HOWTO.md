@@ -65,6 +65,9 @@ cd ~/Documents/Workspace/winter-docker-image
 
 Ни `8.5`, ни `latest`, ни `8.5-swoole6.2`, ни датированного тега.
 
+RC самого Swoole — так же, версию пиши как в теге `phpswoole/swoole` (`6.3.0-rc2-php8.5-alpine`):
+`{ "php": "8.5", "swoole": "6.3.0-rc2", "rc": true }` → `8.5-swoole6.3.0-rc2` и `8.5-rc`.
+
 Версии Swoole, какие бывают: https://hub.docker.com/r/phpswoole/swoole/tags — нужен
 тег вида `6.4.0-php8.5-alpine`.
 
